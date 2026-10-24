@@ -1,4 +1,6 @@
 import os
+import hashlib
+import tempfile
 from dotenv import load_dotenv
 
 # API 密钥填写在 project/.env；系统环境变量优先。
@@ -6,9 +8,12 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 # --- 目录配置 ---
 _BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-APP_NAME = "知源"
-APP_TITLE = "知源 · ZhiYuan RAG"
+os.environ.setdefault('GRADIO_TEMP_DIR', os.path.join(tempfile.gettempdir(),
+    'knowva-gradio-' + hashlib.sha256(_BASE_DIR.encode()).hexdigest()[:12]))
+APP_NAME = "knowva"
+APP_TITLE = APP_NAME
 ASSETS_DIR = os.path.join(_BASE_DIR, "assets")
+APP_LOGO_PATH = os.path.join(ASSETS_DIR, "logo.svg")
 
 # --- Qdrant 配置 ---
 CHILD_COLLECTION = "document_child_chunks"
@@ -39,6 +44,44 @@ MARKDOWN_DIR = os.path.join(_INDEX_DIR, "markdown_docs")
 PARENT_STORE_PATH = os.path.join(_INDEX_DIR, "parent_store")
 QDRANT_DB_PATH = os.path.join(_INDEX_DIR, "qdrant_db")
 CHAT_HISTORY_PATH = os.path.join(_BASE_DIR, "chat_history", "conversations.sqlite3")
+USER_DATA_DIR = os.path.join(_BASE_DIR, "user_data")
+ACCOUNT_DB_PATH = os.path.join(_BASE_DIR, "account_data", "accounts.sqlite3")
+TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "").strip()
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "").strip()
+TURNSTILE_HOSTNAMES = tuple(host.strip().lower() for host in
+    os.environ.get("TURNSTILE_HOSTNAMES", "knowva.xin").split(",") if host.strip())
+
+
+def _positive_env(name, default, minimum=1):
+    value = int(os.environ.get(name, str(default)))
+    if value < minimum:
+        raise ValueError(f"{name} 必须是大于等于 {minimum} 的整数")
+    return value
+
+
+# 默认针对 2 核 2 GB 单进程服务；全部在服务端执行。
+DAILY_QUESTIONS = _positive_env("DAILY_QUESTIONS", 30)
+DAILY_EMBEDDING_CHARS = _positive_env("DAILY_EMBEDDING_CHARS", 500_000)
+DAILY_UPLOAD_BYTES = _positive_env("DAILY_UPLOAD_MB", 50) * 1024 * 1024
+MAX_UPLOAD_BYTES = _positive_env("MAX_UPLOAD_MB", 10) * 1024 * 1024
+MAX_UPLOAD_BATCH = _positive_env("MAX_UPLOAD_BATCH", 3)
+MAX_DOCUMENTS = _positive_env("MAX_DOCUMENTS", 30)
+USER_STORAGE_BYTES = _positive_env("USER_STORAGE_MB", 100) * 1024 * 1024
+MAX_PDF_PAGES = _positive_env("MAX_PDF_PAGES", 100)
+MAX_DOCUMENT_CHARS = _positive_env("MAX_DOCUMENT_CHARS", 200_000)
+MAX_DOCUMENT_CHUNKS = _positive_env("MAX_DOCUMENT_CHUNKS", 600)
+MAX_QUESTION_CHARS = _positive_env("MAX_QUESTION_CHARS", 4000)
+MODEL_MAX_OUTPUT_TOKENS = _positive_env("MODEL_MAX_OUTPUT_TOKENS", 2048)
+MAX_ACTIVE_TASKS = _positive_env("MAX_ACTIVE_TASKS", 2)
+MAX_CACHED_WORKSPACES = _positive_env("MAX_CACHED_WORKSPACES", 3)
+WORKSPACE_IDLE_SECONDS = _positive_env("WORKSPACE_IDLE_SECONDS", 600)
+WORKSPACE_MAX_AGE_SECONDS = _positive_env("WORKSPACE_MAX_AGE_SECONDS", 3600)
+# 流式读取也占用执行线程；1 会让读取等待阻塞图节点执行。
+GRAPH_MAX_CONCURRENCY = _positive_env("GRAPH_MAX_CONCURRENCY", 2, minimum=2)
+UPLOAD_TTL_SECONDS = _positive_env("UPLOAD_TTL_SECONDS", 3600)
+QUEUE_MAX_SIZE = _positive_env("QUEUE_MAX_SIZE", 16)
+MAX_UPLOAD_CACHE_BYTES = _positive_env("MAX_UPLOAD_CACHE_MB", 256) * 1024 * 1024
+MIN_DISK_FREE_BYTES = _positive_env("MIN_DISK_FREE_MB", 256) * 1024 * 1024
 
 
 def validate_model_api_settings():

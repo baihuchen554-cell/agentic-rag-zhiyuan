@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from threading import RLock
 import shutil
 import config
+from contextlib import nullcontext
+from core.accounts import AccountError
 from utils import pdf_to_markdown, clear_directory_contents
 
 
@@ -22,17 +24,22 @@ class DocumentProgress:
 
 class DocumentManager:
 
-    def __init__(self, rag_system):
+    def __init__(self, rag_system, policy=None):
         # 保存 RAG 系统实例，并确保 Markdown 文档目录存在
         self.rag_system = rag_system
         self._mutation_lock = RLock()
-        self.markdown_dir = Path(config.MARKDOWN_DIR)
+        self.policy = policy
+        self.markdown_dir = Path(getattr(rag_system, "markdown_dir", config.MARKDOWN_DIR))
         self.markdown_dir.mkdir(parents=True, exist_ok=True)
 
     def add_documents(self, document_paths, progress_callback=None):
         # 页面断开后后台任务仍会完成；同一实例的增删操作须保持互斥。
-        with self._mutation_lock:
-            return self._add_documents(document_paths, progress_callback)
+        with self.policy.capacity.claim(self.policy.user_id,'ingest') if self.policy else nullcontext():
+            with self._mutation_lock:
+                paths = [document_paths] if isinstance(document_paths,str) else document_paths or []
+                if self.policy:
+                    self.policy.validate_batch(paths)
+                return self._add_documents(paths, progress_callback)
 
     def _add_documents(self, document_paths, progress_callback=None):
         # 没有提供文件路径时，直接返回添加数和跳过数
@@ -79,6 +86,8 @@ class DocumentManager:
                     shutil.copy(source_path, md_path)
                 else:
                     pdf_to_markdown(source_path, self.markdown_dir)
+                if self.policy:
+                    self.policy.validate_text(md_path)
 
                 # 将 Markdown 文档切分为父块和子块
                 stage = "chunking"
@@ -90,6 +99,8 @@ class DocumentManager:
 
                 if not child_chunks:
                     raise ValueError("未生成任何子块。")
+                if self.policy:
+                    self.policy.before_index(md_path, child_chunks)
 
                 # 保存父块，并将子块添加到向量数据库
                 parent_ids = [parent_id for parent_id, _ in parent_chunks]
@@ -104,8 +115,12 @@ class DocumentManager:
                 batch_size = max(1, config.EMBEDDING_BATCH_SIZE)
                 indexing_started = True
                 for start in range(0, total_chunks, batch_size):
+                    if self.policy:
+                        self.policy.ledger.accounts.require_enabled(self.policy.user_id)
                     batch = child_chunks[start:start + batch_size]
                     collection.add_documents(batch, batch_size=batch_size)
+                    if self.policy:
+                        self.policy.check_storage()
                     report(stage, start + len(batch), total_chunks)
 
                 added += 1
@@ -120,7 +135,7 @@ class DocumentManager:
                         )
                     self.rag_system.parent_store.delete_many(parent_ids)
                     md_path.unlink(missing_ok=True)
-                    reason = ("向量处理未完成，请检查接口后重试" if stage == "indexing"
+                    reason = str(e) if isinstance(e,AccountError) else ("向量处理未完成，请检查接口后重试" if stage == "indexing"
                               else "文档处理失败，请检查文件后重试")
                 except Exception as cleanup_error:
                     # 回滚失败时保留来源和父块，使页面仍能选中并删除残留数据。
@@ -145,8 +160,9 @@ class DocumentManager:
         return sorted(p.name for p in self.markdown_dir.glob("*.md"))
 
     def delete_documents(self, sources):
-        with self._mutation_lock:
-            return self._delete_documents(sources)
+        with self.policy.capacity.claim(self.policy.user_id,'ingest') if self.policy else nullcontext():
+            with self._mutation_lock:
+                return self._delete_documents(sources)
 
     def _delete_documents(self, sources):
         sources = sorted(set(sources or []))
@@ -175,8 +191,9 @@ class DocumentManager:
         return len(sources)
 
     def clear_all(self):
-        with self._mutation_lock:
-            self._clear_all()
+        with self.policy.capacity.claim(self.policy.user_id,'ingest') if self.policy else nullcontext():
+            with self._mutation_lock:
+                self._clear_all()
 
     def _clear_all(self):
         # 清空前确保 Markdown 文档目录存在

@@ -4,6 +4,33 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore, FastEmbedSparse, RetrievalMode
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
+from langchain_qdrant.sparse_embeddings import SparseEmbeddings
+from threading import RLock
+
+
+class SharedSparseEmbeddings(SparseEmbeddings):
+    """BM25 是无用户数据的编码器；跨工作空间共享，并串行保护编码调用。"""
+    _instances = {}
+    _creation_lock = RLock()
+
+    @classmethod
+    def get(cls):
+        key = (FastEmbedSparse, config.SPARSE_MODEL)
+        with cls._creation_lock:
+            if key not in cls._instances:
+                cls._instances[key] = cls(FastEmbedSparse(model_name=config.SPARSE_MODEL))
+            return cls._instances[key]
+
+    def __init__(self, model):
+        self.model, self.lock = model, RLock()
+
+    def embed_documents(self, texts):
+        with self.lock:
+            return self.model.embed_documents(texts)
+
+    def embed_query(self, text):
+        with self.lock:
+            return self.model.embed_query(text)
 
 
 class KnowledgeBaseInUseError(RuntimeError):
@@ -16,11 +43,11 @@ class VectorDbManager:
     __dense_embeddings: OpenAIEmbeddings
     __sparse_embeddings: FastEmbedSparse
 
-    def __init__(self):
+    def __init__(self, db_path=None):
         config.validate_model_api_settings()
         # 初始化本地 Qdrant 向量数据库
         try:
-            self.__client = QdrantClient(path=config.QDRANT_DB_PATH)
+            self.__client = QdrantClient(path=db_path or config.QDRANT_DB_PATH)
         except RuntimeError as exc:
             if "already accessed by another instance" in str(exc):
                 raise KnowledgeBaseInUseError(
@@ -28,26 +55,32 @@ class VectorDbManager:
                 ) from exc
             raise
 
-        # 初始化稠密向量模型和稀疏向量模型
-        self.__dense_embeddings = OpenAIEmbeddings(
-            model=config.DENSE_MODEL,
-            api_key=config.EMBEDDING_API_KEY,
-            base_url=config.EMBEDDING_BASE_URL,
-            dimensions=config.DENSE_DIMENSIONS,
-            chunk_size=config.EMBEDDING_BATCH_SIZE,
-            # 百炼接收原始文本；不使用 OpenAI 分词器或 base64 向量。
-            check_embedding_ctx_length=False,
-            model_kwargs={"encoding_format": "float"},
-            request_timeout=config.MODEL_API_TIMEOUT,
-            max_retries=config.MODEL_API_MAX_RETRIES,
-        )
-        self.__sparse_embeddings = FastEmbedSparse(
-            model_name=config.SPARSE_MODEL
-        )
+        try:
+            # 初始化稠密向量模型和稀疏向量模型
+            self.__dense_embeddings = OpenAIEmbeddings(
+                model=config.DENSE_MODEL,
+                api_key=config.EMBEDDING_API_KEY,
+                base_url=config.EMBEDDING_BASE_URL,
+                dimensions=config.DENSE_DIMENSIONS,
+                chunk_size=config.EMBEDDING_BATCH_SIZE,
+                # 百炼接收原始文本；不使用 OpenAI 分词器或 base64 向量。
+                check_embedding_ctx_length=False,
+                model_kwargs={"encoding_format": "float"},
+                request_timeout=config.MODEL_API_TIMEOUT,
+                max_retries=config.MODEL_API_MAX_RETRIES,
+            )
+            self.__sparse_embeddings = SharedSparseEmbeddings.get()
+
+        except Exception:
+            self.__client.close()
+            raise
 
     def _dense_vector_size(self):
         # 维度已经显式指定，无需在每次启动时额外请求向量 API。
         return config.DENSE_DIMENSIONS
+
+    def close(self):
+        self.__client.close()
 
     @staticmethod
     def _collection_vector_size(collection_info):

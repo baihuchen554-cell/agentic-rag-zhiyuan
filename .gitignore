@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .vscode/
+.workbuddy/
 .env
 .env.*
 !.env.example
@@ -29,3 +30,5 @@ markdown_docs/
 parent_store/
 knowledge_base/
 chat_history/
+user_data/
+account_data/

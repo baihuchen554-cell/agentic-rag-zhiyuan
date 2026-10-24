@@ -103,6 +103,11 @@ chinese_ui_js = """(() => {
         'Stop': '停止生成', 'Download': '下载', 'Remove': '移除'
     };
     const translate = (element) => {
+        // 按钮已有文字标签，装饰图标不应重复加入无障碍名称。
+        if (element.matches('button img.button-icon') && element.closest('button').textContent.trim()) {
+            element.setAttribute('alt', '');
+            element.setAttribute('aria-hidden', 'true');
+        }
         for (const attribute of ['title', 'aria-label', 'data-tooltip']) {
             const value = element.getAttribute(attribute);
             if (!value) continue;
@@ -118,7 +123,7 @@ chinese_ui_js = """(() => {
     const scan = (node) => {
         if (!(node instanceof Element)) return;
         translate(node);
-        node.querySelectorAll('[title], [aria-label], [data-tooltip]').forEach(translate);
+        node.querySelectorAll('[title], [aria-label], [data-tooltip], button img').forEach(translate);
     };
     scan(root);
     new MutationObserver((mutations) => {

@@ -1,16 +1,16 @@
-<p align="center"><img src="assets/logo.png" width="84" alt="知源项目图标"></p>
+<p align="center"><img src="assets/logo.svg" width="84" alt="knowva 项目标志"></p>
 
-<h1 align="center">知源 · ZhiYuan RAG</h1>
+<h1 align="center">knowva</h1>
 
 <p align="center">先查文档，再补充互联网。让回答有来源，让对话有记忆。</p>
 
-知源是一个本地运行的中文文档问答应用：上传 PDF / Markdown，构建知识库，并通过对话查询资料。文档问题首先执行本地混合检索，资料不足时联网补充，并展示实际搜索到的网站来源。
+knowva 是一个本地运行的中文文档问答应用：上传 PDF / Markdown，构建知识库，并通过对话查询资料。文档问题首先执行本地混合检索，资料不足时联网补充，并展示实际搜索到的网站来源。
 
 基于 [Giovanni Pasqualino 的 agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies) 改造，保留原作者署名，继续使用 [MIT License](LICENSE)。
 
-**当前为知源初始预览版 v0.1.0**，发布标签为 `zhiyuan-v0.1.0`，后续会持续迭代。此版本号属于本复刻项目，与上游版本号独立。仓库名称为 `agentic-rag-zhiyuan`。
+**最近的发布标签为初始预览版 v0.1.0（`zhiyuan-v0.1.0`）**；当前 `main` 还包含尚未打版本标签的品牌、独立账号和资源管理更新，详见 [CHANGELOG.md](CHANGELOG.md)。版本号属于本复刻项目，与上游版本号独立。网站品牌统一为 `knowva`（原名知源）；GitHub 仓库暂保留名称 `agentic-rag-zhiyuan`。
 
-这是独立维护的学习与二次开发项目，核心架构源自上游；本项目不代表原作者或相关模型服务商，未获其官方背书。当前适合个人本地使用和部署测试，尚未实现用户登录、管理员权限、按用户隔离的数据或调用配额，请勿直接作为开放的多用户服务上线。已实现内容见下文，版本记录见 [CHANGELOG.md](CHANGELOG.md)，使用前请阅读 [免责声明](DISCLAIMER.md) 和 [安全说明](SECURITY.md)。
+这是独立维护的学习与二次开发项目，核心架构源自上游；本项目不代表原作者或相关模型服务商，未获其官方背书。当前适合个人本地使用和部署测试，支持公开游客首页、用户名注册和登录，知识库与聊天记录按账号隔离。已提供服务端用量限制、管理员命令行/API 和备份校验工具，尚无付费系统或完整可视化管理后台。已实现内容见下文，版本记录见 [CHANGELOG.md](CHANGELOG.md)，使用前请阅读 [免责声明](DISCLAIMER.md) 和 [安全说明](SECURITY.md)。
 
 ## 功能
 
@@ -59,13 +59,37 @@ WEB_SEARCH_ENABLED=true
 
 系统环境变量优先于 `.env`。模型名称、维度和分块参数在 [project/config.py](project/config.py)。
 
+### 网站品牌与账号
+
+网站名称、标题和 SVG 标志路径集中在 `project/config.py` 的 `APP_NAME`、`APP_TITLE`、`APP_LOGO_PATH`。侧栏和浏览器图标使用维护者制作的 `assets/logo.svg`。
+
+首页允许游客直接浏览。使用问答、知识库或上传文件时需注册或登录。注册只需用户名、姓名、密码和 Cloudflare Turnstile 人机验证，无需绑定手机号或邮箱。服务器核验验证结果、域名、操作与浏览器请求绑定，接口限制请求频率。部署前需在 `project/.env` 配置正式 Turnstile 密钥，详见 [部署说明](DEPLOYMENT.md)；未配置时不允许登录注册。密码至少 10 个字符，组合使用字母、数字或符号；密码以带随机盐的 scrypt 哈希保存。会话使用 HttpOnly、SameSite Cookie，经 HTTPS 访问时启用 Secure；退出会撤销当前会话。
+
+点击侧栏底部的账号打开设置，可修改姓名、上传或移除头像，以及验证当前密码后更换密码。头像由服务器裁切并重新编码，更新密码会撤销其他登录会话。浏览器标签名称统一为 `knowva`。
+
+注册成功会提供一次性的账号恢复码。请下载并妥善保管；忘记密码时可用它重设密码，重设后撤销全部旧会话并轮换恢复码。没有绑定手机或邮箱，丢失密码和恢复码后无法通过它们找回账号。旧版站点共用账号配置 `WEB_AUTH_*` 已停止使用，不会自动转换为个人账号。
+
+账号数据库位于 `account_data/accounts.sqlite3`，每个账号的数据位于 `user_data/<服务端生成的用户ID>/`。新账号的知识库和聊天记录初始为空。旧版共享的 `knowledge_base/`、`chat_history/` 保留在原地，不会自动分配给任何新账号。不要手工将旧数据复制给所有用户。
+
+后端每次执行功能时都会重新校验会话，并检查队列会话和上传文件的归属；用户目录不对外作为静态文件公开。模型 API 和 CPU 资源仍共用，服务端按账号限制问答次数、上传流量和向量处理量；Gradio 与独立业务接口共用配额与任务容量控制。Turnstile 不替代服务端鉴权、限流和资源管理，也不保证阻止全部自动化攻击。
+
+账号设置中的“使用额度”可查看今日用量和文档/存储预算。默认每日 30 次问答、50 MB 上传流量、50 万向量处理字符；每批最多 3 个文件，单个 10 MB，PDF 最多 100 页，知识库最多 30 个文档，工作目录预算 100 MB。已接受的尝试计入额度，停止或失败不退回已消耗的部分；这些不是模型账单的 Token 或金额限额。
+
+默认允许两个账号各执行一个任务，同时仅进行一项文档写入任务。BM25 编码器跨账号共享，知识库数据保持分离。工作空间缓存最多 3 个，闲置 10 分钟或驻留满 1 小时后，在没有任务和回调使用时回收内存；磁盘数据保留，下次访问会重新加载。停止中的网络请求仍占任务名额，直到实际退出。
+
+前端仍保留 Gradio；新增 `/api/` 业务接口，便于逐步拆出独立前端，见 [API 说明](API.md)。配置、管理员授权、健康检查、备份与恢复演练见 [运维说明](OPERATIONS.md)。
+
+首次使用问答或知识库时才初始化模型；首页和注册不需要下载 BM25。需要镜像时，可在 `.env` 中设置 `HF_ENDPOINT=https://hf-mirror.com`，通过 `FASTEMBED_CACHE_PATH` 指定缓存目录。
+
+本地更新代码不要覆盖服务器的 `.env`、`account_data/` 和 `user_data/`。数据库升级前先停止服务并备份；数据目录和旧共享数据均在 `.gitignore` 中。现有 `knowva.service` 仍可用原命令运行 `project/app.py`，入口现使用 FastAPI/Uvicorn 承载公开首页和账号接口，无需更改 Nginx 转发端口。
+
 ### 启动和停止
 
 ```powershell
 .\.venv\Scripts\python.exe project\app.py
 ```
 
-打开终端显示的地址，通常是 **http://127.0.0.1:7860**。首次启动可能需要下载 BM25 模型。
+打开终端显示的地址，通常是 **http://127.0.0.1:7860**。首次使用知识库或问答功能时可能需要下载 BM25 模型。
 
 请在自己的终端以前台方式运行，停止时在同一终端按 **Ctrl+C**。本地 Qdrant 的同一份知识库只能由一个应用实例打开；修改代码后重启应用。
 
@@ -161,7 +185,7 @@ cp -n project/.env.example project/.env
 
 ```text
 assets/
-  logo.png                项目图标
+  logo.svg                自定义品牌标志
   icons/                  界面 SVG 图标
   workflow_zh.png         中文项目流程图
   workflow_en.png         英文项目流程图
@@ -169,6 +193,9 @@ assets/
   image-prompts.md        图表提示词与生成记录
 project/
   app.py                  程序入口
+  account_server.py       账号接口、同源校验与 Gradio 挂载
+  business_api.py         个人业务接口、管理员接口与健康检查
+  manage.py               可信终端维护与备份入口
   config.py               名称、模型、路径和参数
   .env.example            API 配置模板
   core/                   文档、聊天、记忆、联网和执行状态
@@ -178,19 +205,25 @@ project/
   document_chunker.py     父子分块
   utils.py                PDF 转换、Token 估算
 tests/                    离线回归测试
-knowledge_base/            按模型和维度隔离的知识库（运行时生成）
-chat_history/             SQLite 聊天记录（运行时生成）
+account_data/             账号、会话、角色、头像、用量与审计（运行时生成）
+user_data/<用户ID>/         个人知识库与聊天记录（运行时生成）
+  knowledge_base/<模型>_<维度>/
+  chat_history/
+knowledge_base/            旧版共享数据，保留但不自动导入账号
+chat_history/             旧版共享聊天，保留但不对游客公开
 requirements.txt          锁定的运行依赖
 LICENSE                   MIT 许可与原作者署名
 ```
 
-资源统一放在 `assets/`，不依赖开发者电脑上的临时图片。根目录如已有旧版 `qdrant_db/` 数据会保留，当前应用使用 `knowledge_base/<模型>_<维度>/`。
+资源统一放在 `assets/`，不依赖开发者电脑上的临时图片。账号版使用 `user_data/<用户ID>/` 中的个人存储；根目录已有的旧版 `knowledge_base/`、`chat_history/` 和 `qdrant_db/` 保留，不会自动分配给注册用户。
 
 ## 数据与备份
 
-- Markdown、父块 JSON 和向量索引：`knowledge_base/<模型>_<维度>/`。
-- 聊天记录与记忆：`chat_history/`，与向量索引相互独立。
-- 备份前停止应用，再复制整个 `knowledge_base/` 和 `chat_history/`；恢复到原位置后启动。
+- 账号、会话、角色、头像、用量与审计：`account_data/accounts.sqlite3`。
+- 个人 Markdown、父块 JSON 和向量索引：`user_data/<用户ID>/knowledge_base/<模型>_<维度>/`。
+- 个人聊天记录与记忆：`user_data/<用户ID>/chat_history/conversations.sqlite3`，与向量索引相互独立。
+- 备份前停止整个应用，使用 `project/manage.py backup` 创建包含配置、账号库和全部个人数据的私有备份，再用 `verify-backup` 校验。完整命令和恢复演练见 [运维说明](OPERATIONS.md)；不要只备份旧共享目录。
+- 如仍保留旧版 `knowledge_base/`、`chat_history/`、`qdrant_db/`，备份工具默认一并收录。Nginx、systemd 与 HTTPS 证书位于项目外，需另外安全备份。
 - `project/.env` 单独妥善保管，勿提交版本库。运行数据与密钥均已列入 `.gitignore`。
 - **本地存储不代表完全离线**：文档文本会发送到向量 API；召回内容、问题和必要的会话上下文会发送到 DeepSeek；联网补充时向搜索接口发送检索问题。
 
@@ -215,13 +248,13 @@ LICENSE                   MIT 许可与原作者署名
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-测试使用临时数据、测试数据库和模拟接口，覆盖知识库优先、来源校验、记忆恢复、会话删除、停止生成、分批入库与失败回滚、文档删除、PDF 转换和数据库占用，不调用真实付费模型，不修改现有知识库。
+测试使用临时数据、测试数据库和模拟接口，覆盖知识库优先、来源校验、记忆恢复、会话删除、停止生成、分批入库与失败回滚、文档删除、PDF 转换、账号隔离、权限撤销、资源限额、业务接口及备份校验，不调用真实付费模型，不修改现有知识库。
 
 ## 致谢与许可
 
 原项目：[agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)，作者 **Giovanni Pasqualino**，Copyright © 2025。
 
-本项目在原实现基础上加入中文界面、云端模型接口、知识库优先检索、持久会话记忆、联网来源校验、可中止流式生成和分阶段入库状态，整理为“知源 · ZhiYuan RAG”。2026 年新增修改由 ZhiYuan RAG contributors 贡献。
+本项目在原实现基础上加入中文界面、云端模型接口、知识库优先检索、持久会话记忆、联网来源校验、可中止流式生成和分阶段入库状态，整理为“knowva”。2026 年新增修改由 ZhiYuan RAG contributors 贡献。
 
 继续采用 MIT 许可，原始版权声明与许可条款完整保留在 [LICENSE](LICENSE)。第三方依赖和服务遵循各自的许可及使用条款。
 

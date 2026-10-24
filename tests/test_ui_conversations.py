@@ -13,6 +13,7 @@ from db.parent_store_manager import ParentStoreManager
 from rag_agent.graph import create_agent_graph
 from test_conversation_memory import MemoryLlm, rag_for, search_child_chunks
 from ui.gradio_app import create_gradio_ui
+from ui_fixture import test_workspaces
 
 
 class UiConversationTest(unittest.TestCase):
@@ -28,8 +29,8 @@ class UiConversationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.multiple(
             config, CHAT_HISTORY_PATH=str(Path(directory) / "history.sqlite3"),
             MARKDOWN_DIR=str(Path(directory) / "markdown"), PARENT_STORE_PATH=str(Path(directory) / "parents"),
-        ), patch("ui.gradio_app.RAGSystem", PreviewRag):
-            demo = create_gradio_ui()
+        ):
+            demo = create_gradio_ui(workspaces=test_workspaces(PreviewRag))
             self.addCleanup(demo.close)
             callbacks = {function.fn.__name__: function.fn for function in demo.fns.values() if function.fn}
             send = callbacks["send_message"]

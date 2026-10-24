@@ -1,4 +1,5 @@
 from typing import Literal, Set
+import config
 import json
 import logging
 from langchain_core.messages import SystemMessage, HumanMessage, RemoveMessage, AIMessage, ToolMessage
@@ -294,7 +295,7 @@ def request_clarification(state: State):
 
 def conversation_answer(state: State, llm):
     response = llm.invoke([
-        SystemMessage(content="你是知源助手。结合下方历史摘要和近期聊天，用中文简洁自然地回答。记住用户已经提供的姓名、偏好和事项；不知道的个人信息不要猜测。这是聊天回复，不要联网或编造文档来源。\n历史摘要：\n" + state.get("conversation_summary", "")),
+        SystemMessage(content=f"你是 {config.APP_NAME} 助手。结合下方历史摘要和近期聊天，用中文简洁自然地回答。记住用户已经提供的姓名、偏好和事项；不知道的个人信息不要猜测。这是聊天回复，不要联网或编造文档来源。\n历史摘要：\n" + state.get("conversation_summary", "")),
         *[message for message in state.get("messages", []) if _is_plain_conversation_message(message)],
     ])
     return {"messages": [AIMessage(content=response.content)]}

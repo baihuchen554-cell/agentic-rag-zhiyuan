@@ -9,12 +9,13 @@ from langchain_deepseek import ChatDeepSeek
 
 class RAGSystem:
 
-    def __init__(self, collection_name=config.CHILD_COLLECTION):
+    def __init__(self, collection_name=config.CHILD_COLLECTION, paths=None):
         config.validate_model_api_settings()
         # 保存向量集合名称，并初始化数据库和文档切分器。
         self.collection_name = collection_name
-        self.vector_db = VectorDbManager()
-        self.parent_store = ParentStoreManager()
+        self.markdown_dir = paths.markdown if paths else config.MARKDOWN_DIR
+        self.vector_db = VectorDbManager(db_path=paths.vectors) if paths else VectorDbManager()
+        self.parent_store = ParentStoreManager(paths.parents) if paths else ParentStoreManager()
         self.chunker = DocumentChunker()
 
         # 智能体工作流将在 initialize() 中创建
@@ -40,11 +41,12 @@ class RAGSystem:
             temperature=config.LLM_TEMPERATURE,
             timeout=config.MODEL_API_TIMEOUT,
             max_retries=config.MODEL_API_MAX_RETRIES,
+            max_tokens=config.MODEL_MAX_OUTPUT_TOKENS,
             extra_body={"thinking": {"type": "disabled"}},
         )
 
         # 根据向量集合创建检索工具，并构建智能体工作流
-        tools = ToolFactory(collection).create_tools()
+        tools = ToolFactory(collection, parent_store=self.parent_store).create_tools()
         self.agent_graph = create_agent_graph(llm, tools)
 
     def get_config(self, thread_id=None):
@@ -52,4 +54,5 @@ class RAGSystem:
         return {
             "configurable": {"thread_id": thread_id or self.thread_id},
             "recursion_limit": self.recursion_limit,
+            "max_concurrency": config.GRAPH_MAX_CONCURRENCY,
         }

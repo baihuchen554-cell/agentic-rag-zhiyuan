@@ -1,9 +1,12 @@
-"""知源：极简文档问答界面，复用现有检索和文档管理服务。"""
+"""knowva：极简文档问答界面，复用现有检索和文档管理服务。"""
 
 from html import escape
+from core.accounts import AccountStore
+from core.workspaces import WorkspaceRegistry, WorkspaceScope
+from ui.account_ui import ACCOUNT_DIALOG
+from ui.settings_ui import SETTINGS_DIALOG
 from pathlib import Path
 from queue import Queue
-from threading import Thread
 from time import time
 from dataclasses import replace
 from urllib.parse import quote
@@ -11,16 +14,15 @@ from urllib.parse import quote
 import gradio as gr
 import config
 
-from core.chat_interface import ChatInterface
-from core.document_manager import DocumentManager, DocumentProgress
-from core.rag_system import RAGSystem
+from core.document_manager import DocumentProgress
 from core.conversation_store import normalize_history
+from core.accounts import AccountError
 from ui.upload_progress import render_upload_progress
 
 ASSET_DIR = Path(config.ASSETS_DIR)
 ICON_DIR = ASSET_DIR / "icons"
 gr.set_static_paths(paths=[str(ASSET_DIR.resolve())])
-BRAND_ICON_URL = "./gradio_api/file=" + quote((ASSET_DIR / "logo.png").resolve().as_posix(), safe="/:")
+BRAND_ICON_URL = "./gradio_api/file=" + quote(Path(config.APP_LOGO_PATH).resolve().as_posix(), safe="/:")
 
 
 def _icon(name):
@@ -37,16 +39,18 @@ HEADER = """<div id="sidebar-backdrop"><button id="sidebar-scrim" aria-label="�
 <span id="conversation-title">新的对话</span></div><span class="header-caption">文档问答</span></header>"""
 WELCOME = """<div class="welcome-copy"><h1>有什么可以帮你？</h1>
 <p>从你的文档开始，让复杂问题变得清晰。</p></div>"""
-PROFILE = """<div class="workspace-profile"><span class="profile-avatar">我</span><div>
-<span>本地工作空间</span><small>本地知识库 · 云端问答</small></div></div>"""
+PROFILE = """<div class="workspace-profile" id="account-profile">
+<button type="button" class="profile-trigger" data-account-action="login" id="account-entry" aria-label="登录或注册账号">
+<span class="profile-avatar" id="account-avatar">K</span><span class="profile-copy"><strong id="account-name">登录 / 注册</strong><small id="account-caption">开启你的个人知识空间</small></span>
+<svg class="profile-settings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m9.5 3-.6 2a8 8 0 0 0-1.7 1L5.1 5.5 3 9.1l1.5 1.5a8 8 0 0 0 0 2L3 14.9l2.1 3.6 2.1-.5a8 8 0 0 0 1.7 1l.6 2h5l.6-2a8 8 0 0 0 1.7-1l2.1.5 2.1-3.6-1.5-1.5a8 8 0 0 0 0-2L21 9.1l-2.1-3.6-2.1.5a8 8 0 0 0-1.7-1l-.6-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div>"""
 
 
-def create_gradio_ui():
-    rag_system = RAGSystem()
-    rag_system.initialize()
-    doc_manager = DocumentManager(rag_system)
-    chat_service = ChatInterface(rag_system)
-    store = chat_service.store
+def create_gradio_ui(workspaces=None):
+    workspaces = workspaces or WorkspaceRegistry(AccountStore(config.ACCOUNT_DB_PATH))
+    scope = WorkspaceScope(workspaces)
+    doc_manager = scope.proxy("documents")
+    chat_service = scope.proxy("chat")
+    store = scope.proxy("store")
 
     def header_for(title):
         return HEADER.replace('>新的对话</span>', f'>{escape(title)}</span>')
@@ -95,15 +99,15 @@ def create_gradio_ui():
         def process():
             try:
                 doc_manager.add_documents(files, progress_callback=report)
-            except Exception:
+            except Exception as exc:
                 report(replace(latest, stage="complete", failed=max(1, latest.failed),
-                               issues=(*latest.issues, "处理未完成，请刷新文档列表后重试。")))
+                               issues=(*latest.issues, str(exc) if isinstance(exc, AccountError) else "处理未完成，请刷新文档列表后重试。")))
             finally:
                 events.put(None)
 
         yield busy_packet(latest)
         # 后台执行文档处理，阶段事件通过生成器推送，等待 API 时页面仍可更新。
-        Thread(target=process, daemon=True, name="document-ingestion").start()
+        scope.background(process)
         while (update := events.get()) is not None:
             if update.stage != "complete":
                 yield busy_packet(update)
@@ -223,6 +227,7 @@ def create_gradio_ui():
         return conversation_packet(conversation_id, saved["messages"], saved["title"])
 
     with gr.Blocks(title=config.APP_TITLE, fill_height=True, fill_width=True) as demo:
+        gr.HTML(ACCOUNT_DIALOG + SETTINGS_DIALOG, elem_id="account-surface")
         pending_delete = gr.State([])
         conversation_id = gr.State(None)
         pending_conversation_delete = gr.State(None)
@@ -230,9 +235,9 @@ def create_gradio_ui():
             with gr.Column(scale=0, min_width=248, elem_id="app-sidebar"):
                 gr.HTML(BRAND, elem_id="sidebar-brand")
                 new_chat_btn = gr.Button("新建对话", icon=_icon("new-chat"), elem_id="new-chat", elem_classes="nav-button", interactive=False)
-                documents_btn = gr.Button("知识库", icon=_icon("documents"), elem_id="knowledge-nav", elem_classes="nav-button")
+                documents_btn = gr.Button("知识库", icon=_icon("documents"), elem_id="knowledge-nav", elem_classes="nav-button", interactive=False)
                 gr.HTML('<div class="sidebar-divider"></div><div class="sidebar-label">历史对话</div>', elem_id="session-label")
-                conversation_list = gr.Radio(choices=store.list_conversations(), value=None, label="历史对话",
+                conversation_list = gr.Radio(choices=[], value=None, label="历史对话",
                                              show_label=False, container=False, elem_id="conversation-history")
                 delete_conversation_btn = gr.Button("删除当前对话", icon=_icon("trash"), size="sm", interactive=False,
                                                      elem_id="delete-conversation")
@@ -258,7 +263,7 @@ def create_gradio_ui():
                             lines=1, max_lines=8, container=False, autofocus=True,
                             submit_btn=True, stop_btn=False, elem_id="composer-input", interactive=False,
                         )
-                        attach_btn = gr.Button("添加文档", icon=_icon("plus"), size="sm", elem_id="composer-attach")
+                        attach_btn = gr.Button("添加文档", icon=_icon("plus"), size="sm", elem_id="composer-attach", interactive=False)
                     gr.HTML('<p class="composer-note">优先参考文档，资料不足时联网补充。请核对来源信息。</p>', elem_id="composer-note")
                 with gr.Column(visible=False, elem_id="documents-view") as documents_view:
                     gr.HTML('<div class="documents-heading"><h1>你的知识库</h1><p>上传资料，让每一次回答都有据可依。</p></div>')
@@ -272,8 +277,8 @@ def create_gradio_ui():
                         refresh_btn = gr.Button("刷新列表", icon=_icon("refresh"), elem_id="refresh-documents")
                     upload_progress = gr.HTML(visible=False, elem_id="upload-progress")
                     gr.HTML('<h2 class="section-title">已入库的文档 · 可勾选删除</h2>')
-                    initial_files = doc_manager.get_markdown_files()
-                    file_list = gr.HTML(format_file_list(), visible=not initial_files, elem_id="document-list")
+                    initial_files = []
+                    file_list = gr.HTML('<div class="empty-documents"><div class="empty-doc-icon" aria-hidden="true">▱</div><h3>还没有文档</h3><p>上传 PDF 或 Markdown，开始你的第一次提问。</p></div>', visible=True, elem_id="document-list")
                     document_selection = gr.CheckboxGroup(
                         choices=initial_files, value=[], label="选择文档", show_label=False,
                         visible=bool(initial_files), elem_id="document-selection",
@@ -295,32 +300,36 @@ def create_gradio_ui():
                             cancel_clear = gr.Button("取消", size="sm")
                             confirm_clear = gr.Button("确认清空", variant="stop", size="sm")
 
+        document_outputs = [file_list, document_selection, delete_selected_btn, delete_confirmation, pending_delete]
         for button in (documents_btn, attach_btn):
-            button.click(lambda: (gr.update(visible=False), gr.update(visible=True)),
-                         outputs=[chat_view, documents_view], queue=False, show_progress="hidden")
+            button.click(scope.guard(lambda: (gr.update(visible=False), gr.update(visible=True))),
+                         outputs=[chat_view, documents_view], queue=False, show_progress="hidden").then(
+                             scope.guard(file_updates), outputs=document_outputs, show_progress="minimal")
         for button in (back_btn,):
             button.click(lambda: (gr.update(visible=True), gr.update(visible=False)),
                          outputs=[chat_view, documents_view], queue=False, show_progress="hidden")
         conversation_outputs = [chatbot, textbox, conversation_id, conversation_list, header, new_chat_btn,
                                 delete_conversation_btn, chat_view, documents_view,
                                 conversation_delete_confirmation, pending_conversation_delete]
-        new_chat_btn.click(new_conversation, outputs=conversation_outputs, show_progress="hidden", queue=False)
-        conversation_list.input(select_conversation, inputs=conversation_list,
+        new_chat_btn.click(scope.guard(new_conversation), outputs=conversation_outputs, show_progress="hidden", queue=False)
+        conversation_list.input(scope.guard(select_conversation), inputs=conversation_list,
                                 outputs=conversation_outputs,
                                 show_progress="hidden", queue=False)
-        textbox.submit(send_message, inputs=[textbox, chatbot, conversation_id],
+        textbox.submit(scope.guard(send_message), inputs=[textbox, chatbot, conversation_id],
                        outputs=conversation_outputs,
-                       concurrency_id="chat", concurrency_limit=1, show_progress="hidden")
-        textbox.stop(stop_generation, inputs=conversation_id, outputs=conversation_outputs,
+                       concurrency_id="chat", concurrency_limit=config.MAX_ACTIVE_TASKS, show_progress="hidden")
+        textbox.stop(scope.guard(stop_generation), inputs=conversation_id, outputs=conversation_outputs,
                      queue=False, show_progress="hidden")
-        demo.load(load_conversations, outputs=conversation_outputs, show_progress="hidden")
-        delete_conversation_btn.click(prepare_conversation_delete, inputs=conversation_id,
+        demo.load(scope.guard(load_conversations, guest=True), outputs=conversation_outputs, show_progress="hidden").then(
+            lambda: (gr.update(interactive=True), gr.update(interactive=True)),
+            outputs=[documents_btn, attach_btn], show_progress="hidden", queue=False)
+        delete_conversation_btn.click(scope.guard(prepare_conversation_delete), inputs=conversation_id,
                                       outputs=[conversation_delete_confirmation, conversation_delete_message, pending_conversation_delete],
                                       queue=False, show_progress="hidden")
         cancel_conversation_delete.click(lambda: (gr.update(visible=False), None),
                                           outputs=[conversation_delete_confirmation, pending_conversation_delete], queue=False)
-        confirm_conversation_delete.click(delete_conversation_handler, inputs=[pending_conversation_delete, conversation_id],
-                                           outputs=conversation_outputs, concurrency_id="chat", concurrency_limit=1,
+        confirm_conversation_delete.click(scope.guard(delete_conversation_handler), inputs=[pending_conversation_delete, conversation_id],
+                                           outputs=conversation_outputs, concurrency_id="chat", concurrency_limit=config.MAX_ACTIVE_TASKS,
                                            show_progress="hidden")
         document_outputs = [file_list, document_selection, delete_selected_btn, delete_confirmation, pending_delete]
         document_selection.change(
@@ -337,17 +346,18 @@ def create_gradio_ui():
         )
         cancel_delete.click(lambda: (gr.update(visible=False), []),
                             outputs=[delete_confirmation, pending_delete], queue=False)
-        confirm_delete.click(delete_selected_handler, inputs=pending_delete, outputs=document_outputs,
+        confirm_delete.click(scope.guard(delete_selected_handler), inputs=pending_delete, outputs=document_outputs,
                              concurrency_id="knowledge_base", concurrency_limit=1, show_progress="minimal")
-        files_input.upload(upload_ready, inputs=files_input, outputs=[upload_progress, add_btn],
+        files_input.upload(scope.guard(upload_ready), inputs=files_input, outputs=[upload_progress, add_btn],
                            queue=False, show_progress="hidden")
-        add_btn.click(upload_handler, inputs=files_input,
+        add_btn.click(scope.guard(upload_handler, uploads=True), inputs=files_input,
                       outputs=[files_input, *document_outputs, upload_progress, add_btn, refresh_btn, clear_btn],
                       concurrency_id="knowledge_base", concurrency_limit=1, show_progress="hidden")
-        refresh_btn.click(file_updates, outputs=document_outputs, show_progress="hidden")
+        refresh_btn.click(scope.guard(file_updates), outputs=document_outputs, show_progress="hidden")
         clear_btn.click(lambda: (gr.update(visible=True), gr.update(visible=False), []),
                         outputs=[clear_confirmation, delete_confirmation, pending_delete], queue=False)
         cancel_clear.click(lambda: gr.update(visible=False), outputs=clear_confirmation, queue=False)
-        confirm_clear.click(clear_handler, outputs=[*document_outputs, clear_confirmation],
+        confirm_clear.click(scope.guard(clear_handler), outputs=[*document_outputs, clear_confirmation],
                             concurrency_id="knowledge_base", concurrency_limit=1, show_progress="minimal")
+    demo.queue(max_size=config.QUEUE_MAX_SIZE)
     return demo

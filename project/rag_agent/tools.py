@@ -6,10 +6,10 @@ from core.execution_logger import log_error, log_tool_end, log_tool_start
 
 class ToolFactory:
 
-    def __init__(self, collection):
+    def __init__(self, collection, parent_store=None):
         # 保存向量数据库集合，并初始化父文档存储管理器
         self.collection = collection
-        self.parent_store_manager = ParentStoreManager()
+        self.parent_store_manager = parent_store if parent_store is not None else ParentStoreManager()
 
     def _search_child_chunks(self, query: str, limit: int = config.DEFAULT_RETRIEVAL_K) -> str:
         """搜索与用户问题相关的文档片段。

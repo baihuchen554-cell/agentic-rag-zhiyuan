@@ -133,9 +133,9 @@ class IngestionProgressTest(unittest.TestCase):
 
     def test_page_restores_controls_and_retains_failed_files_for_retry(self):
         from ui.gradio_app import create_gradio_ui
-        with patch.object(config, "CHAT_HISTORY_PATH", str(self.root / "history.sqlite3")), \
-                patch("ui.gradio_app.RAGSystem", return_value=self.rag):
-            demo = create_gradio_ui()
+        from ui_fixture import test_workspaces
+        with patch.object(config, "CHAT_HISTORY_PATH", str(self.root / "history.sqlite3")):
+            demo = create_gradio_ui(workspaces=test_workspaces(lambda: self.rag))
             self.addCleanup(demo.close)
             callbacks = {function.fn.__name__: function.fn for function in demo.fns.values() if function.fn}
             self.embeddings.fail_on = 2

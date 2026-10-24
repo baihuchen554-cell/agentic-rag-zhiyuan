@@ -51,6 +51,11 @@ class Generation:
     response: list = field(default_factory=list)
     completed: bool = False
     worker: Any = None
+    release_resources: Any = None
+
+    def release_capacity(self):
+        if self.release_resources:
+            self.release_resources()
 
 
 def graph_events(graph, stream_input, generation, on_cancelled_exit):
@@ -88,9 +93,12 @@ def graph_events(graph, stream_input, generation, on_cancelled_exit):
                     pass
                 except Exception as exc:
                     offer("error", exc)
-            if generation.cancelled.is_set():
-                on_cancelled_exit(generation.workflow_id)
-            offer("end", None)
+            try:
+                if generation.cancelled.is_set():
+                    on_cancelled_exit(generation.workflow_id)
+            finally:
+                generation.release_capacity()
+                offer("end", None)
 
     generation.worker = Thread(target=produce, name="rag-generation", daemon=True)
     generation.worker.start()

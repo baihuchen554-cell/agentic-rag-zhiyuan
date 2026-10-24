@@ -2,7 +2,7 @@
 
 ## 项目来源与独立维护
 
-知源（`agentic-rag-zhiyuan`）是基于 [agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies) 的复刻与二次开发项目。原作者为 **Giovanni Pasqualino**，原始版权为 Copyright (c) 2025 Giovanni Pasqualino。本仓库保留上游历史和 MIT 许可，新增修改署名见 [LICENSE](LICENSE)。
+knowva（原名知源，仓库名称暂为 `agentic-rag-zhiyuan`）是基于 [agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies) 的复刻与二次开发项目。原作者为 **Giovanni Pasqualino**，原始版权为 Copyright (c) 2025 Giovanni Pasqualino。本仓库保留上游历史和 MIT 许可，新增修改署名见 [LICENSE](LICENSE)。
 
 本项目并非从零独立原创，核心 RAG 与智能体工作流来源于上游；中文界面、模型接口调整、持久会话记忆、知识库优先检索、来源校验及入库交互等修改由本项目维护者继续开发。此为独立维护项目，不代表原作者、阿里云、DeepSeek 或其他第三方，不构成任何官方合作或背书。商标与服务名称属于各自权利人。
 
@@ -10,7 +10,7 @@
 
 当前版本为初始预览版，主要用于学习、个人文档问答和部署实验，功能、接口和数据格式可能在后续更新中调整。升级前请备份数据并阅读版本记录。
 
-当前未实现用户登录、管理员授权、用户数据隔离、调用配额或完整的服务运维机制。知识库与聊天记录共享，不能将现有界面直接视为安全的多租户产品。部署者应根据实际用途完善访问控制、隐私告知和资源管理。
+当前支持游客首页、用户名注册登录、按账号隔离的知识库及聊天记录，并提供服务端用量限制、明确授权的管理员工具和备份校验。尚无付费系统或完整的可视化管理后台。账号隔离不保证消除全部安全风险，应用额度不等于模型服务的金额上限；旧版共享数据不会自动分配给新账号。部署者应根据实际用途完善访问控制、隐私告知和资源管理。
 
 ## AI 回答与引用
 

@@ -1,4 +1,4 @@
-"""知源界面的灰阶主题和响应式布局。"""
+"""knowva 界面的灰阶主题和响应式布局。"""
 
 import gradio as gr
 from gradio.themes.utils.fonts import Font
@@ -18,15 +18,16 @@ app_theme = gr.themes.Base(
 )
 
 custom_css = """
-:root { --app-ink:#171717; --app-muted:#808080; --app-rail:#f7f7f8; --app-input:#f1f2f4; --rail-width:248px; }
+:root { --app-ink:#202124; --app-muted:#797b82; --app-rail:#f5f5f6; --app-input:#f1f2f4; --rail-width:264px; }
 html,body { margin:0!important; background:#fff!important; color:#171717!important; }
 body,button,textarea { font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif!important; }
 .gradio-container { width:100%!important; max-width:none!important; padding:0!important; margin:0!important; background:#fff!important; }
 .gradio-container>.main,.gradio-container>.main>.wrap { padding:0!important; gap:0!important; }
-footer,.built-with { display:none!important; }
+footer:not(.settings-footer),.built-with { display:none!important; }
 #app-shell { height:100dvh; gap:0!important; flex-wrap:nowrap!important; overflow:hidden; }
 #app-shell .html-container { padding:0!important; }
-#app-sidebar { box-sizing:border-box; width:var(--rail-width)!important; min-width:var(--rail-width)!important; max-width:var(--rail-width)!important; height:100%; flex:none!important; gap:4px!important; padding:20px 12px!important; background:var(--app-rail); transition:margin-left 180ms ease,transform 180ms ease; }
+#app-sidebar { box-sizing:border-box; width:var(--rail-width)!important; min-width:var(--rail-width)!important; max-width:var(--rail-width)!important; height:100%; flex:none!important; gap:6px!important; padding:20px 12px 14px!important; background:var(--app-rail)!important; border-right:1px solid #ebebee; transition:margin-left 180ms ease,transform 180ms ease; }
+#app-sidebar>.block,#app-sidebar>.form,#app-sidebar .html-container { background:transparent!important; }
 #sidebar-brand,#session-label,#workspace-profile,#workspace-header,#welcome,#composer-note { padding:0!important; border:0!important; background:transparent!important; }
 .sidebar-brand { display:flex; align-items:center; gap:10px; height:44px; padding:0 12px; font-size:23px; font-weight:650; }
 .brand-mark { display:block; flex:none; width:31px; height:31px; object-fit:contain; }
@@ -34,7 +35,7 @@ footer,.built-with { display:none!important; }
 .icon-button svg { width:20px; height:20px; }.icon-button:hover { background:#e8e8ea; }
 .sidebar-brand .icon-button { margin-left:auto; }
 #new-chat { margin-top:28px!important; }
-#app-sidebar .nav-button { flex:none!important; justify-content:flex-start!important; height:46px; min-height:46px; padding:0 14px!important; gap:12px!important; font-size:14px!important; font-weight:450!important; border:0!important; box-shadow:none!important; background:transparent!important; color:#262626!important; border-radius:9px!important; }
+#app-sidebar .nav-button { flex:none!important; justify-content:flex-start!important; height:46px; min-height:46px; padding:0 14px!important; gap:12px!important; font-size:15px!important; font-weight:450!important; border:0!important; box-shadow:none!important; background:transparent!important; color:var(--app-ink)!important; border-radius:9px!important; }
 #app-sidebar .nav-button:hover { background:#e9e9ec!important; }
 #app-sidebar .nav-button img { width:19px!important; height:19px!important; }
 .sidebar-divider { height:16px; margin-top:14px; }
@@ -54,9 +55,16 @@ footer,.built-with { display:none!important; }
 #conversation-delete-confirmation p { font-size:12px!important; line-height:1.7!important; color:#875858!important; margin:0!important; overflow-wrap:anywhere; }
 #conversation-delete-confirmation button { min-width:0!important; font-size:12px!important; border-radius:7px!important; padding:6px!important; }
 #workspace-profile { flex:none!important; margin-top:auto!important; }
-.workspace-profile { display:flex; gap:10px; align-items:center; padding:15px 12px 3px; font-size:12px; }
-.profile-avatar { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; background:#e6e6e9; }
-.workspace-profile small { display:block; margin-top:4px; color:#929298; font-size:10px; }
+.workspace-profile { padding:12px 0 0; border-top:1px solid #e4e4e8; }
+.profile-trigger { display:flex; align-items:center; gap:12px; width:100%; padding:10px!important; border:0!important; border-radius:12px!important; background:transparent!important; color:var(--app-ink)!important; text-align:left; cursor:pointer; }
+.profile-trigger:hover { background:#e9e9ed!important; }
+.profile-avatar { display:flex; flex:none; align-items:center; justify-content:center; width:44px; height:44px; overflow:hidden; border-radius:50%; background:#e3e3e8; color:#555861; font-size:18px; font-weight:600; }
+.profile-avatar img { display:block; width:100%; height:100%; object-fit:cover; }
+.profile-copy { display:block; flex:1; min-width:0; }
+.profile-copy strong { display:block; font-size:15px; font-weight:550; line-height:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.workspace-profile small { display:block; margin-top:3px; color:var(--app-muted); font-size:12px; line-height:1.5; }
+.profile-settings-icon { flex:none; width:19px; height:19px; color:#777b83; }
+html[data-account=guest] .profile-settings-icon { display:none; }
 #workspace { height:100%; min-height:0!important; min-width:0!important; gap:0!important; padding:0!important; background:#fff; }
 .workspace-header { height:68px; display:flex; align-items:center; justify-content:space-between; padding:0 30px; }
 .header-left { display:flex; align-items:center; gap:12px; min-width:0; font-size:17px; font-weight:550; }

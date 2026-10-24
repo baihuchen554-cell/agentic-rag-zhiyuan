@@ -26,12 +26,21 @@ def _memory(values):
 
 
 class ChatInterface:
-    def __init__(self, rag_system, store=None):
+    def __init__(self, rag_system, store=None, policy=None):
         self.rag_system = rag_system
         self.store = store or ConversationStore()
         self._lock = RLock()
         self._active = {}
         self._workflow_ids = {}
+        self.policy = policy
+        self._runs = []
+
+    @property
+    def busy(self):
+        with self._lock:
+            self._runs = [run for run in self._runs if (run.worker is not None and run.worker.is_alive())
+                          or (not run.completed and not run.cancelled.is_set())]
+            return bool(self._runs)
 
     def begin_generation(self, message, history, conversation_id):
         with self._lock:
@@ -46,15 +55,34 @@ class ChatInterface:
             turn = [*previous, {"role": "user", "content": message.strip()}]
             generation = Generation(conversation_id, workflow_id, config,
                                     self.rag_system.agent_graph.get_state(config), saved, turn)
+            release = None
+            if self.policy:
+                release = self.policy.capacity.acquire(self.policy.user_id, 'chat')
+                try:
+                    self.policy.consume_question(message)
+                except Exception:
+                    release()
+                    raise
+            generation.release_resources = release
             config["callbacks"] = [*(config.get("callbacks") or []), CancellationCallback(generation.cancelled)]
-            self.store.save(conversation_id, turn, saved["memory"])
+            if self.policy:
+                from core.resource_limits import ActiveAccountCallback
+                config['callbacks'].append(ActiveAccountCallback(self.policy))
+            try:
+                self.store.save(conversation_id, turn, saved["memory"])
+            except Exception:
+                generation.release_capacity()
+                raise
             self._active[conversation_id] = generation
+            self._runs.append(generation)
             return generation
 
     def _release(self, generation):
         with self._lock:
             if self._active.get(generation.conversation_id) is generation:
                 self._active.pop(generation.conversation_id)
+            if generation.worker is None or not generation.worker.is_alive():
+                generation.release_capacity()
 
     def _clear_checkpoint(self, workflow_id):
         checkpointer = getattr(self.rag_system.agent_graph, "checkpointer", None)
